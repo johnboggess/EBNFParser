@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32407.343
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EBNFParser", "EBNFParser\EBNFParser.csproj", "{C0C1C275-0D17-491C-900A-6304BDE52097}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C0C1C275-0D17-491C-900A-6304BDE52097}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0C1C275-0D17-491C-900A-6304BDE52097}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0C1C275-0D17-491C-900A-6304BDE52097}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0C1C275-0D17-491C-900A-6304BDE52097}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F2C2B012-0F7D-4F24-9E28-84DAC3EA4FF9}
+	EndGlobalSection
+EndGlobal
