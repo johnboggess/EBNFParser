@@ -18,9 +18,9 @@ namespace EBNFParser
                     continue;
                 string[] split = line.Split("=");
                 if (split.Length == 1)
-                    throw new System.Exception($"Invalid rule at line {lineIndex}");//todo: show line number
+                    throw new System.Exception($"Invalid rule at line {lineIndex}");
 
-                string name = split[0];//remove ws
+                string name = string.Join("", split[0].Where(x => !char.IsWhiteSpace(x)));
                 string rule = string.Join("", split.Skip(1));
 
                 //todo: strip out terminals first. Replace them with easy to identify references. e.g "return" become $1$
@@ -59,10 +59,6 @@ namespace EBNFParser
 
         private static GrammarNode ConstructGrammar(IEnumerable<SymbolIndexPair> symbols, string rule)
         {
-            //check if its only terminal symbols
-            bool hasTermials = !symbols.Any(x => x.Symbol == Symbol.Terminal);
-            bool hasBinary = symbols.Any(x => IsBinarySymbol(x.Symbol));
-            bool hasUnary = symbols.Any(x => IsUnarySymbol(x.Symbol));
 
             //The following converts symbols index pairs to grammar nodes.
             //Unary nodes do get there inner node assign here. Binary nodes do not, as unary have higher precedence.
@@ -72,29 +68,35 @@ namespace EBNFParser
                 SymbolIndexPair symbol = symbols.ElementAt(i);
                 if(symbol.Symbol == Symbol.Terminal)
                 {
-                    nodes.Add(new TerminalSymbol());
-                    i += 1;
+                    SymbolIndexPair endTerminal = symbols.ElementAt(i+1);
+                    if (endTerminal.Symbol != Symbol.Terminal)
+                        throw new System.Exception("Non terminal end following terminal start");
+                    nodes.Add(new TerminalOperator()
+                    {
+                        Value = rule.Substring(symbol.Index + 1, endTerminal.Index - symbol.Index - 1),
+                    });
+                    i +=1;
                 }
-                else if(symbol.Symbol == Symbol.Concatenation)
-                {
-                    nodes.Add(new BinarySymbol() { Symbol = Symbol.Concatenation });
-                }
-                else if (symbol.Symbol == Symbol.Alternation)
-                {
-                    nodes.Add(new BinarySymbol() { Symbol = Symbol.Alternation });
-                }
-                else if(IsUnarySymbol(symbol.Symbol))
+                else if (IsUnarySymbol(symbol.Symbol))
                 {
                     int end = FindEnd(symbols.Skip(i)) + i;
-                    if(i+1 == end)
+                    if (i + 1 == end)
                         throw new System.Exception("empty optional, repetition or grouping sequence");
-                    GrammarNode unaryNode = new UnarySymbol()
+                    GrammarNode unaryNode = new UnaryOperator()
                     {
                         Symbol = symbol.Symbol,
-                        Inner = ConstructGrammar(symbols.Skip(i+1).Take(end - i-1), rule)
+                        Inner = ConstructGrammar(symbols.Skip(i + 1).Take(end - i - 1), rule)
                     };
                     nodes.Add(unaryNode);
                     i = end;
+                }
+                else if(symbol.Symbol == Symbol.Concatenation)
+                {
+                    nodes.Add(new BinaryOperator() { Symbol = Symbol.Concatenation });
+                }
+                else if (symbol.Symbol == Symbol.Alternation)
+                {
+                    nodes.Add(new BinaryOperator() { Symbol = Symbol.Alternation });
                 }
             }
 
@@ -102,8 +104,24 @@ namespace EBNFParser
             if (nodes.Count == 1)
                 return nodes[0];
 
-            GenerateBinaryTreeForSpecificSymbol(nodes, Symbol.Concatenation);
-            GenerateBinaryTreeForSpecificSymbol(nodes, Symbol.Alternation);
+            
+            (List<GrammarNode> sequence, int start, int length) sequence = GetFirstConsecutiveSequenceOfOperators(nodes, Symbol.Concatenation);
+            while(sequence.start > -1)
+            {
+                GrammarNode tree = GenerateBinaryTreeFromSequence(sequence.sequence);
+                nodes.RemoveRange(sequence.start, sequence.length);
+                nodes.Insert(sequence.start, tree);
+                sequence = GetFirstConsecutiveSequenceOfOperators(nodes, Symbol.Concatenation);
+            }
+
+            sequence = GetFirstConsecutiveSequenceOfOperators(nodes, Symbol.Alternation);
+            while (sequence.start > -1)
+            {
+                GrammarNode tree = GenerateBinaryTreeFromSequence(sequence.sequence);
+                nodes.RemoveRange(sequence.start, sequence.length);
+                nodes.Insert(sequence.start, tree);
+                sequence = GetFirstConsecutiveSequenceOfOperators(nodes, Symbol.Alternation);
+            }
 
             if (nodes.Count != 1)
                 throw new System.Exception("Failed to construct grammar tree");
@@ -111,40 +129,39 @@ namespace EBNFParser
             return nodes[0];
         }
 
-        private static void GenerateBinaryTreeForSpecificSymbol(List<GrammarNode> nodes, Symbol symbol)
+        private static (List<GrammarNode> sequence, int start, int length) GetFirstConsecutiveSequenceOfOperators(List<GrammarNode> nodes, Symbol symbol)
         {
-            if (!IsBinarySymbol(symbol))
-                throw new System.Exception("Must be a binary symbol");
-
-            int binarySymbolStart = -1;
-            int binarySymbolEnd = -1;
-            for (int i = 1; i < nodes.Count; i += 2)
+            int binarySymbolStart = -1;//beginning of the consecutive set of operators
+            int binarySymbolEnd = -1;//end of the consecutive set of operators
+            for (int i = 1; i < nodes.Count(); i += 2)//add two becuase at this point every other node should be a binary operator
             {
-                if (nodes[i].Symbol == symbol && binarySymbolStart < 0)
+                GrammarNode node = nodes.ElementAt(i);
+                if (node.Symbol == symbol && binarySymbolStart < 0)
                 {
+                    //We have found the first occurance of the operator
                     binarySymbolStart = i;
                     binarySymbolEnd = binarySymbolStart;
                 }
-                else if (nodes[i].Symbol == symbol && binarySymbolStart >= 0)
-                    binarySymbolEnd = i;
-                
-                if ((nodes[i].Symbol != symbol && binarySymbolStart >= 0) || binarySymbolEnd+2 >= nodes.Count)
+                else if (node.Symbol == symbol && binarySymbolStart >= 0)
                 {
-                    int rangeStart = binarySymbolStart - 1;
-                    int rangeLength = (binarySymbolEnd + 1) - (binarySymbolStart - 1) + 1;
-                    IEnumerable<GrammarNode> concatenationNodes = nodes.Skip(rangeStart).Take(rangeLength);
-                    GrammarNode concate = GenerateBinaryTreeForSpecificSymbol(concatenationNodes);
-                    nodes.RemoveRange(rangeStart, rangeLength);
-                    nodes.Insert(rangeStart, concate);
-                    binarySymbolStart = -1;
-                    binarySymbolEnd = -1;
-
-                    //minus one buase we add plus two to every iterations.
-                    //Also replacing the concatenations moveed all binary symbols left such that they are nolonger aligned
-                    i = rangeStart - 1;
+                    //We have found a another node in the sequence. This is now the last known node
+                    binarySymbolEnd = i;
                 }
 
+                if ((node.Symbol != symbol && binarySymbolStart >= 0) || binarySymbolEnd + 2 >= nodes.Count())
+                {
+                    //A operator has been found that isnt the target operator, ending the sequence
+                    //Find the range over which the sequnce spans
+                    int rangeStart = binarySymbolStart - 1;//Subtract one as the operator to the left of the first operator is the left child node of the first operator
+                    int rangeEnd = binarySymbolEnd + 1;//Add one as the operator to the right of the last operator is the right child node of the last operator
+                    int rangeLength = rangeEnd - rangeStart + 1;
+
+                    IEnumerable<GrammarNode> concatenationNodes = nodes.Skip(rangeStart).Take(rangeLength);
+                    return (concatenationNodes.ToList(), rangeStart, rangeLength);
+                }
             }
+
+            return new(new List<GrammarNode>(), -1, 0);
         }
 
         /// <summary>
@@ -153,22 +170,22 @@ namespace EBNFParser
         /// </summary>
         /// <param name="grammarNodes"></param>
         /// <returns></returns>
-        private static GrammarNode GenerateBinaryTreeForSpecificSymbol(IEnumerable<GrammarNode> grammarNodes)
+        private static GrammarNode GenerateBinaryTreeFromSequence(IEnumerable<GrammarNode> grammarNodes)
         {
-            BinarySymbol leftSymbol = null;
-            BinarySymbol topSymbol = null;
+            BinaryOperator leftSymbol = null;
+            BinaryOperator topSymbol = null;
             for (int i = 1; i < grammarNodes.Count(); i+=2)
             {
                 GrammarNode node = grammarNodes.ElementAt(i);
                 if (leftSymbol == null)//shpuld only be null at first iteration
                 {
-                    leftSymbol = (BinarySymbol)grammarNodes.ElementAt(i);
+                    leftSymbol = (BinaryOperator)grammarNodes.ElementAt(i);
                     leftSymbol.Left = grammarNodes.ElementAt(i - 1);
                     topSymbol = leftSymbol;
                 }
                 else
                 {
-                    BinarySymbol binarySymbol = (BinarySymbol)grammarNodes.ElementAt(i);
+                    BinaryOperator binarySymbol = (BinaryOperator)grammarNodes.ElementAt(i);
                     binarySymbol.Left = grammarNodes.ElementAt(i - 1);
                     leftSymbol.Right = binarySymbol;
                     leftSymbol = binarySymbol;
@@ -184,7 +201,7 @@ namespace EBNFParser
             int repetitionStart = 0;
             int groupingStart = 0;
 
-            for(int i = 0; i < symbols.Count(); i++)
+            for (int i = 0; i < symbols.Count(); i++)
             {
                 if (symbols.ElementAt(i).Symbol == Symbol.OptionalStart)
                     optionalStart += 1;
@@ -209,7 +226,7 @@ namespace EBNFParser
                 throw new System.Exception("Missing repetition end");
             if (groupingStart > 0)
                 throw new System.Exception("Missing grouping end");
-            throw new System.Exception("Missing optional, repetition or grouping end");
+            throw new System.Exception("Missing optional, repetition, grouping or terminal end");
         }
 
         /*
@@ -306,16 +323,16 @@ namespace EBNFParser
 
 
         
-        private class TerminalSymbol : GrammarNode
+        private class TerminalOperator : GrammarNode
         {
             public string Value = "";
-            public TerminalSymbol() { Symbol = Symbol.Terminal; }
+            public TerminalOperator() { Symbol = Symbol.Terminal; }
         }
-        private class UnarySymbol : GrammarNode
+        private class UnaryOperator : GrammarNode
         {
             public GrammarNode Inner;
         }
-        private class BinarySymbol : GrammarNode
+        private class BinaryOperator : GrammarNode
         {
             public GrammarNode Left;
             public GrammarNode Right;
