@@ -1,4 +1,5 @@
 ﻿using EBNFParser.EBNFOperators;
+using EBNFParser.Exceptions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,8 +10,9 @@ namespace EBNFParser
 {
     public class Grammar
     {
-        public static Operator Build(string ebnf)
+        public static List<Rule> Build(string ebnf)
         {
+            List<Rule> rules = new List<Rule>();
             string[] lines = ebnf.Split(";");
             for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
             {
@@ -19,10 +21,13 @@ namespace EBNFParser
                     continue;
                 string[] split = line.Split("=");
                 if (split.Length == 1)
-                    throw new System.Exception($"Undefined/Named rule at line {lineIndex}");
+                    throw new EBNFException($"Undefined/Named rule at line {lineIndex}");
 
                 string name = string.Join("", split[0].Where(x => !char.IsWhiteSpace(x)));
                 string rule = string.Join("", split.Skip(1));
+
+                if (rules.Any(x => x.Name == name))
+                    throw new EBNFException($"Rule with name {name} already exists");
 
                 //todo: strip out terminals first. Replace them with easy to identify references. e.g "return" become $1$
                 //todo: when adding in regex crete special symbol to denote start/end (e.g. like ? for special sequence) and strip those out similar to strings
@@ -36,17 +41,18 @@ namespace EBNFParser
                 int terminalCount = symbols.Count(x => x.Symbol == Symbol.Terminal);
 
                 if (!isEven(optionalCount))
-                    throw new System.Exception("Unbalanced optional symbols");
+                    throw new EBNFException("Unbalanced optional symbols");
                 if (!isEven(repetitionCount))
-                    throw new System.Exception("Unbalanced repetition symbols");
+                    throw new EBNFException("Unbalanced repetition symbols");
                 if (!isEven(groupingCount))
-                    throw new System.Exception("Unbalanced grouping symbols");
+                    throw new EBNFException("Unbalanced grouping symbols");
                 if (!isEven(terminalCount))
-                    throw new System.Exception("Unbalanced terminal symbols");
+                    throw new EBNFException("Unbalanced terminal symbols");
 
-                return ConstructGrammar(symbols, rule);
+                Operator topLevelOperator = ConstructGrammar(symbols, rule);
+                rules.Add(new Rule() { Name = name, Operator = topLevelOperator });
             }
-            return null;
+            return rules;
         }
         private static Operator ConstructGrammar(IEnumerable<OperatorCharacter> operators, string rule)
         {
@@ -68,7 +74,7 @@ namespace EBNFParser
 
                     //even though the previous comment should be true, check just in case
                     if (endTerminal.Symbol != Symbol.Terminal)
-                        throw new System.Exception("Non terminal end following terminal start");
+                        throw new EBNFException("Non terminal end following terminal start");
 
                     string terminalValue = rule.Substring(op.Index + 1, endTerminal.Index - op.Index - 1);
                     operatorSequence.Add(new Terminal(terminalValue));
@@ -79,7 +85,7 @@ namespace EBNFParser
                     //We define unary operators now so the tree is first divided by optional/repition/group operators
                     int end = FindUnaryEnd(operators.Skip(i)) + i;
                     if (i + 1 == end)
-                        throw new System.Exception("empty optional, repetition or grouping sequence");
+                        throw new EBNFException("empty optional, repetition or grouping sequence");
 
                     UnaryOperator unaryOperator;
                     IEnumerable<OperatorCharacter> innerOperators = operators.Skip(i + 1).Take(end - i - 1);
@@ -88,11 +94,11 @@ namespace EBNFParser
                     if (op.Symbol == Symbol.OptionalStart)
                         unaryOperator = new Optional(inner);
                     else if (op.Symbol == Symbol.RepetitionStart)
-                        unaryOperator = new Optional(inner);
+                        unaryOperator = new Repetition(inner);
                     else if (op.Symbol == Symbol.GroupingStart)
-                        unaryOperator = new Optional(inner);
+                        unaryOperator = new Grouping(inner);
                     else
-                        throw new System.Exception($"Unknown unary operator {op.Symbol.ToString()}");
+                        throw new EBNFException($"Unknown unary operator {op.Symbol.ToString()}");
 
                     operatorSequence.Add(unaryOperator);
                     i = end;
@@ -109,6 +115,17 @@ namespace EBNFParser
 
             if (operatorSequence.Count == 1)
                 return operatorSequence[0];
+
+            for(int i = 1; i < operatorSequence.Count; i+=2)
+            {
+                if(!(operatorSequence[i] is BinaryOperator))
+                {
+                    if (operatorSequence[i] is Terminal)
+                        throw new EBNFException($"Terminal {((Terminal)(operatorSequence[i])).Value} not properly seperated by a binary operator.");
+                    else
+                        throw new EBNFException($"{operatorSequence[i].GetType().Name} not properly seperated by a binary operator.");
+                }
+            }
 
 
             (List<Operator> sequence, int start, int length) sequence = GetFirstConsecutiveSequenceOfOperators(operatorSequence, typeof(Concatenation));
@@ -130,7 +147,7 @@ namespace EBNFParser
             }
 
             if (operatorSequence.Count != 1)
-                throw new System.Exception("Failed to construct grammar tree");
+                throw new EBNFException("Failed to construct grammar tree");
 
             return operatorSequence[0];
         }
@@ -187,18 +204,18 @@ namespace EBNFParser
                 if (leftSymbol == null)//should only be null at first iteration
                 {
                     leftSymbol = (BinaryOperator)nodes.ElementAt(i);
-                    leftSymbol.Left = nodes.ElementAt(i - 1);
+                    leftSymbol.LeftOperator = nodes.ElementAt(i - 1);
                     topSymbol = leftSymbol;
                 }
                 else
                 {
                     BinaryOperator binarySymbol = (BinaryOperator)nodes.ElementAt(i);
-                    binarySymbol.Left = nodes.ElementAt(i - 1);
-                    leftSymbol.Right = binarySymbol;
+                    binarySymbol.LeftOperator = nodes.ElementAt(i - 1);
+                    leftSymbol.RightOperator = binarySymbol;
                     leftSymbol = binarySymbol;
                 }
             }
-            leftSymbol.Right = nodes.ElementAt(nodes.Count() - 1);
+            leftSymbol.RightOperator = nodes.ElementAt(nodes.Count() - 1);
             return topSymbol;
         }
 
@@ -235,12 +252,12 @@ namespace EBNFParser
                     return i;
             }
             if (optionalStart > 0)
-                throw new System.Exception("Missing optional end");
+                throw new EBNFException("Missing optional end");
             if (repetitionStart > 0)
-                throw new System.Exception("Missing repetition end");
+                throw new EBNFException("Missing repetition end");
             if (groupingStart > 0)
-                throw new System.Exception("Missing grouping end");
-            throw new System.Exception("Missing optional, repetition or grouping end");
+                throw new EBNFException("Missing grouping end");
+            throw new EBNFException("Missing optional, repetition or grouping end");
         }
         private static IEnumerable<OperatorCharacter> GetOperators(string str)
         {
