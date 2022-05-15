@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace EBNFParser.Rules
+namespace EBNFParser.EBNFOperators
 {
-    public class Terminal : Rule
+    public class Terminal : Operator
     {
         public string Value = "";
         public Terminal() { }

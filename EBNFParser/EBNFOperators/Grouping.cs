@@ -4,15 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace EBNFParser.Rules
+namespace EBNFParser.EBNFOperators
 {
-    public class Grouping
+    public class Grouping : UnaryOperator
     {
-        public Rule Rule;
         public Grouping() { }
-        public Grouping(Rule rule)
-        {
-            Rule = rule;
-        }
+        public Grouping(Operator inner) : base(inner) { }
     }
 }

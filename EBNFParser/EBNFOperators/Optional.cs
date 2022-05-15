@@ -4,15 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace EBNFParser.Rules
+namespace EBNFParser.EBNFOperators
 {
-    public class Optional
+    public class Optional : UnaryOperator
     {
-        public Rule Rule;
         public Optional() { }
-        public Optional(Rule rule) 
-        {
-            Rule = rule;
-        }
+        public Optional(Operator inner) : base(inner) { }
     }
 }
