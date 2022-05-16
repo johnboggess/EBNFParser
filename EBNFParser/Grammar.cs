@@ -12,10 +12,20 @@ namespace EBNFParser
     public class Grammar
     {
         private static Regex ruleReference = new Regex("[a-zA-Z][a-zA-Z0-9]*(?!&)");
+        private static Regex ruleEnd = new Regex(";(?!\"|')");
         public static List<Rule> Build(string ebnf)
         {
+            //Rmove all terminal string values and replace them with an identifier. This identifer of the form &x& where x which terminal in the rule
+            //Terminal operators will be assigned their actual values when created
+            //This is to prevent issues detecting characters inside strings as EBNF symbols
+            Dictionary<int, string> terminalValues = ExtractStrings(ebnf, out ebnf);
+            if (ebnf.Contains("\"") || ebnf.Contains("'"))
+                throw new EBNFException("Unbalanced terminal symbols");
+
             List<Rule> rules = new List<Rule>();
-            string[] lines = ebnf.Split(";");
+
+            string[] lines = ruleEnd.Split(ebnf);
+
             for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
             {
                 string line = lines[lineIndex];
@@ -23,20 +33,13 @@ namespace EBNFParser
                     continue;
                 string[] split = line.Split("=");
                 if (split.Length == 1)
-                    throw new EBNFException($"Undefined/Named rule at line {lineIndex}");
+                    throw new EBNFException($"Undefined/Unnamed rule at line {lineIndex} ({line})");
 
                 string name = string.Join("", split[0].Where(x => !char.IsWhiteSpace(x)));
                 string rule = string.Join("", split.Skip(1));
 
                 if (rules.Any(x => x.Name == name))
                     throw new EBNFException($"Rule with name {name} already exists");
-
-                //Rmove all terminal string values and replace them with an identifier. This identifer of the form &x& where x which terminal in the rule
-                //Terminal operators will be assigned their actual values when created
-                //This is to prevent issues with seeing operator characters when Getting the operator characters from the rules
-                Dictionary<int, string> terminalValues = ExtractStrings(rule, out rule);
-                if (rule.Contains("\"") || rule.Contains("'"))
-                    throw new EBNFException("Unbalanced terminal symbols");
 
                 rule = ruleReference.Replace(rule, "%$&%");
 

@@ -3,6 +3,7 @@ using EBNFParser.EBNFOperators;
 using EBNFParser.Exceptions;
 using NUnit.Framework;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Tests
 {
@@ -134,6 +135,92 @@ namespace Tests
 
             Assert.True(rules[1].Name == "otherLetter");
             Assert.True(((Terminal)rules[1].Operator).Value == "B");
+        }
+
+        [Test]
+        public void SplitOnTerminalRuleEndSymbol()
+        {
+            //There was an issue where the grammar builder though ; inside terminals were the end of the rule
+            string ebnf = "test = '[' | ';';";
+            List<Rule> rules = Grammar.Build(ebnf);
+
+            ebnf = "test = '[' | 'a;';";
+            rules = Grammar.Build(ebnf);
+
+            ebnf = "test = '[' | 'a;a';";
+            rules = Grammar.Build(ebnf);
+        }
+
+        [Test]
+        public void SplitOnRuleStartSymbol()
+        {
+            //There was an issue where the grammar builder though = inside terminals were to spliut the rule between its name and value
+            string ebnf = "test = '[' | '=';";
+            List<Rule> rules = Grammar.Build(ebnf);
+
+            ebnf = "test = '[' | 'a=';";
+            rules = Grammar.Build(ebnf);
+
+            ebnf = "test = '[' | 'a=a';";
+            rules = Grammar.Build(ebnf);
+        }
+
+        [Test]
+        public void FullEBNFGrammarTest()
+        {
+            string grammar = File.ReadAllText("EBNFGrammar.txt");
+            List<Rule> rules = Grammar.Build(grammar);
+
+            foreach(Rule rule in rules)
+            {
+                if(rule.Name == "letter")
+                {
+                    int A = 'A';
+                    int a = 'a';
+                    Alternation op = (Alternation)rule.Operator;
+                    for(int i = 0; i < 26; i++)
+                    {
+                        Assert.True(op.Left<Terminal>().Value == ""+((char)(A + i)));
+                        op = op.Right<Alternation>();
+                    }
+                    for (int i = 0; i < 24; i++)
+                    {
+                        Assert.True(op.Left<Terminal>().Value == "" + ((char)(a + i)));
+                        op = op.Right<Alternation>();
+                    }
+                    Assert.True(op.Left<Terminal>().Value == "y");
+                    Assert.True(op.Right<Terminal>().Value == "z");
+                }
+                else if(rule.Name == "digit")
+                {
+                    Alternation op = (Alternation)rule.Operator;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        Assert.True(op.Left<Terminal>().Value == i.ToString());
+                        op = op.Right<Alternation>();
+                    }
+                    Assert.True(op.Left<Terminal>().Value == "8");
+                    Assert.True(op.Right<Terminal>().Value == "9");
+                }
+                else if(rule.Name == "symbol")
+                {
+                    Assert.True(((Alternation)rule.Operator).Left<Terminal>().Value == "[");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Left<Terminal>().Value == "]");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == "{");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == "}");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == "(");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == ")");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == "<");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == ">");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == "'");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == "\"");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == "=");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == "|");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == ".");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == ",");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Terminal>().Value == ";");
+                }
+            }
         }
     }
 }
