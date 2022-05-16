@@ -8,12 +8,15 @@ namespace EBNFParser.EBNFOperators
 {
     public class UnaryOperator : Operator
     {
-        private Operator _innerOperator;
-        public Operator InnerOperator { get { return _innerOperator; } set { _innerOperator = value; } }
+        public Operator InnerOperator { get { return _operators[0]; } set { _operators[0] = value; } }
 
-        public UnaryOperator() { }
+        public UnaryOperator()
+        {
+            _operators = new List<Operator>() { null };
+        }
         public UnaryOperator(Operator inner)
         {
+            _operators = new List<Operator>() { null };
             InnerOperator = inner;
         }
 

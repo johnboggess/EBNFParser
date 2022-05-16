@@ -4,12 +4,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace EBNFParser
 {
     public class Grammar
     {
+        private static Regex ruleReference = new Regex("[a-zA-Z][a-zA-Z0-9]*(?!&)");
         public static List<Rule> Build(string ebnf)
         {
             List<Rule> rules = new List<Rule>();
@@ -29,7 +31,15 @@ namespace EBNFParser
                 if (rules.Any(x => x.Name == name))
                     throw new EBNFException($"Rule with name {name} already exists");
 
-                //todo: strip out terminals first. Replace them with easy to identify references. e.g "return" become $1$
+                //Rmove all terminal string values and replace them with an identifier. This identifer of the form &x& where x which terminal in the rule
+                //Terminal operators will be assigned their actual values when created
+                //This is to prevent issues with seeing operator characters when Getting the operator characters from the rules
+                Dictionary<int, string> terminalValues = ExtractStrings(rule, out rule);
+                if (rule.Contains("\"") || rule.Contains("'"))
+                    throw new EBNFException("Unbalanced terminal symbols");
+
+                rule = ruleReference.Replace(rule, "%$&%");
+
                 //todo: when adding in regex crete special symbol to denote start/end (e.g. like ? for special sequence) and strip those out similar to strings
                 
                 //Get only the characters representing EBNF operators
@@ -38,7 +48,6 @@ namespace EBNFParser
                 int optionalCount = symbols.Count(x => x.Symbol == Symbol.OptionalStart || x.Symbol == Symbol.OptionalEnd);
                 int repetitionCount = symbols.Count(x => x.Symbol == Symbol.RepetitionStart || x.Symbol == Symbol.RepetitionEnd);
                 int groupingCount = symbols.Count(x => x.Symbol == Symbol.GroupingStart || x.Symbol == Symbol.GroupingEnd);
-                int terminalCount = symbols.Count(x => x.Symbol == Symbol.Terminal);
 
                 if (!isEven(optionalCount))
                     throw new EBNFException("Unbalanced optional symbols");
@@ -46,15 +55,20 @@ namespace EBNFParser
                     throw new EBNFException("Unbalanced repetition symbols");
                 if (!isEven(groupingCount))
                     throw new EBNFException("Unbalanced grouping symbols");
-                if (!isEven(terminalCount))
-                    throw new EBNFException("Unbalanced terminal symbols");
 
-                Operator topLevelOperator = ConstructGrammar(symbols, rule);
+                Operator topLevelOperator = ConstructGrammar(symbols, rule, terminalValues);
+
+
+
                 rules.Add(new Rule() { Name = name, Operator = topLevelOperator });
             }
+
+            foreach(Rule rule in rules)
+                FillRuleReferences(rule.Operator, rules);
+
             return rules;
         }
-        private static Operator ConstructGrammar(IEnumerable<OperatorCharacter> operators, string rule)
+        private static Operator ConstructGrammar(IEnumerable<OperatorCharacter> operators, string rule, Dictionary<int, string> terminalValues)
         {
             List<Operator> operatorSequence = new List<Operator>();
 
@@ -69,7 +83,7 @@ namespace EBNFParser
                 if (op.Symbol == Symbol.Terminal)
                 {
                     //define the terminal operator
-                    //The first " of a terminal will always be followed by the ending " of the terminal (see are only looking at characters representing EBNF operators).
+                    //The first & of a terminal will always be followed by the ending & of the terminal (see are only looking at characters representing EBNF operators).
                     OperatorCharacter endTerminal = operators.ElementAt(i + 1);
 
                     //even though the previous comment should be true, check just in case
@@ -77,7 +91,24 @@ namespace EBNFParser
                         throw new EBNFException("Non terminal end following terminal start");
 
                     string terminalValue = rule.Substring(op.Index + 1, endTerminal.Index - op.Index - 1);
-                    operatorSequence.Add(new Terminal(terminalValue));
+                    terminalValue = terminalValue.Replace("&", "");
+                    operatorSequence.Add(new Terminal(terminalValues[int.Parse(terminalValue)]));
+                    i += 1;
+                }
+                else if (op.Symbol == Symbol.RuleReference)
+                {
+                    //we are referencing another rule
+                    //Like terminal symbols, the symbol after the first in a pair of rule reference symbols is always another rule reference
+                    OperatorCharacter endTerminal = operators.ElementAt(i + 1);
+
+                    //even though the previous comment should be true, check just in case
+                    if (endTerminal.Symbol != Symbol.RuleReference)
+                        throw new EBNFException("Invalid name for rule being referenced");
+
+                    string referencedRule = rule.Substring(op.Index + 1, endTerminal.Index - op.Index - 1);
+                    referencedRule = referencedRule.Replace("%", "");
+                    //put dummy name with real rules name.
+                    operatorSequence.Add(new RuleReference(new Rule() { Name = referencedRule }));
                     i += 1;
                 }
                 else if (IsUnarySymbol(op.Symbol))
@@ -89,7 +120,7 @@ namespace EBNFParser
 
                     UnaryOperator unaryOperator;
                     IEnumerable<OperatorCharacter> innerOperators = operators.Skip(i + 1).Take(end - i - 1);
-                    Operator inner = ConstructGrammar(innerOperators, rule);
+                    Operator inner = ConstructGrammar(innerOperators, rule, terminalValues);
 
                     if (op.Symbol == Symbol.OptionalStart)
                         unaryOperator = new Optional(inner);
@@ -116,6 +147,7 @@ namespace EBNFParser
             if (operatorSequence.Count == 1)
                 return operatorSequence[0];
 
+
             for(int i = 1; i < operatorSequence.Count; i+=2)
             {
                 if(!(operatorSequence[i] is BinaryOperator))
@@ -126,6 +158,9 @@ namespace EBNFParser
                         throw new EBNFException($"{operatorSequence[i].GetType().Name} not properly seperated by a binary operator.");
                 }
             }
+
+            if (operatorSequence.First() is BinaryOperator || operatorSequence.Last() is BinaryOperator)
+                throw new EBNFException("Rule cannot start or end with binary operator");
 
 
             (List<Operator> sequence, int start, int length) sequence = GetFirstConsecutiveSequenceOfOperators(operatorSequence, typeof(Concatenation));
@@ -152,6 +187,23 @@ namespace EBNFParser
             return operatorSequence[0];
         }
 
+        private static void FillRuleReferences(Operator parent, List<Rule> rules)
+        {
+            if(parent is RuleReference ruleReference)
+            {
+                string ruleName = ruleReference.ReferencedRule.Name;
+                Rule r = rules.Where(x => x.Name == ruleName).FirstOrDefault();
+                if (r == null)
+                    throw new EBNFException($"Referencing undefined rule '{ruleName}'");
+                else
+                    ruleReference.ReferencedRule = r;
+                return;
+            }
+            foreach(Operator op in parent.Operators)
+            {
+                FillRuleReferences(op, rules);
+            }
+        }
         private static (List<Operator> sequence, int start, int length) GetFirstConsecutiveSequenceOfOperators(List<Operator> nodes, Type operatorType)
         {
             int binarySymbolStart = -1;//beginning of the consecutive set of operators
@@ -289,8 +341,10 @@ namespace EBNFParser
                 return (true, Symbol.GroupingEnd);
             else if (c == '-')
                 return (true, Symbol.Exception);
-            else if (c == '"')
+            else if (c == '&')
                 return (true, Symbol.Terminal);
+            else if (c == '%')
+                return (true, Symbol.RuleReference);
             return (false, Symbol.Terminal);
         }
         private static bool isEven(int i)
@@ -311,6 +365,44 @@ namespace EBNFParser
             result = result || symbol == Symbol.Terminal;
             return result;
         }
+
+        private static Dictionary<int, string> ExtractStrings(string str, out string result)
+        {
+            Dictionary<int, string> strings = new Dictionary<int, string>();
+            int stringsFound = 0;
+            int start = -1;
+            for (int i = 0; i < str.Length; i++)
+            {
+                if (!(str[i] == '\'' || str[i] == '\"'))
+                    continue;
+
+                //ignore \' and dont ignore \\'
+                if (i > 0 && str[i - 1] == '\\')
+                    if (!(i > 1 && str[i - 2] == '\\'))
+                        continue;
+                if (start == -1)
+                {
+                    start = i;
+                    continue;
+                }
+                string strValue = str.Substring(start + 1, i - start - 1);
+                string insertValue = $"&{stringsFound}&";
+                str = str.Remove(start, i - start+1);
+                str = str.Insert(start, insertValue);
+
+                strValue = strValue.Replace(@"\'", @"'");
+                strValue = strValue.Replace("\\\"", "\"");
+                strValue = strValue.Replace(@"\\", @"\");
+                strings.Add(stringsFound, strValue);
+
+                i = start;
+                start = -1;
+                stringsFound += 1;
+            }
+            result = str;
+            return strings;
+        }
+
         private class OperatorCharacter
         {
             /// <summary>
@@ -335,6 +427,7 @@ namespace EBNFParser
             GroupingEnd,
             Exception,
             Terminal,
+            RuleReference,
         }
     }
 }

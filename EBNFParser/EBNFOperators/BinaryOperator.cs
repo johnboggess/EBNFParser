@@ -8,15 +8,16 @@ namespace EBNFParser.EBNFOperators
 {
     public abstract class BinaryOperator : Operator
     {
-        private Operator _leftOperator;
-        private Operator _rightOperator;
+        public Operator LeftOperator { get { return _operators[0]; } set { _operators[0] = value; } }
+        public Operator RightOperator { get { return _operators[1]; } set { _operators[1] = value; } }
 
-        public Operator LeftOperator { get { return _leftOperator; } set { _leftOperator = value; } }
-        public Operator RightOperator { get { return _rightOperator; } set { _rightOperator = value; } }
-
-        public BinaryOperator() { }
+        public BinaryOperator()
+        {
+            _operators = new List<Operator>() { null, null };
+        }
         public BinaryOperator(Operator left, Operator right)
         {
+            _operators = new List<Operator>() { null, null };
             LeftOperator = left;
             RightOperator = right;
         }
