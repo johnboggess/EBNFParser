@@ -20,7 +20,7 @@ namespace EBNFParser
             //This is to prevent issues detecting characters inside strings as EBNF symbols
             Dictionary<int, string> terminalValues = ExtractStrings(ebnf, out ebnf);
             if (ebnf.Contains("\"") || ebnf.Contains("'"))
-                throw new EBNFException("Unbalanced terminal symbols");
+                throw new EBNFException("Unbalanced terminal symbols");//todo: give line number
 
             List<Rule> rules = new List<Rule>();
 
@@ -33,13 +33,15 @@ namespace EBNFParser
                     continue;
                 string[] split = line.Split("=");
                 if (split.Length == 1)
-                    throw new EBNFException($"Undefined/Unnamed rule at line {lineIndex} ({line})");
+                    throw new EBNFException($"Undefined/Unnamed rule at line {lineIndex}");
+                if (split.Length > 2)
+                    throw new EBNFException($"Extra '=' at line {lineIndex}");
 
                 string name = string.Join("", split[0].Where(x => !char.IsWhiteSpace(x)));
                 string rule = string.Join("", split.Skip(1));
 
                 if (rules.Any(x => x.Name == name))
-                    throw new EBNFException($"Rule with name {name} already exists");
+                    throw new EBNFException($"Rule '{name}' defined more than once");
 
                 rule = ruleReference.Replace(rule, "%$&%");
 
@@ -53,11 +55,11 @@ namespace EBNFParser
                 int groupingCount = symbols.Count(x => x.Symbol == Symbol.GroupingStart || x.Symbol == Symbol.GroupingEnd);
 
                 if (!isEven(optionalCount))
-                    throw new EBNFException("Unbalanced optional symbols");
+                    throw new EBNFException($"Unbalanced optional symbols at line {lineIndex}");
                 if (!isEven(repetitionCount))
-                    throw new EBNFException("Unbalanced repetition symbols");
+                    throw new EBNFException($"Unbalanced repetition symbols {lineIndex}");
                 if (!isEven(groupingCount))
-                    throw new EBNFException("Unbalanced grouping symbols");
+                    throw new EBNFException($"Unbalanced grouping symbols {lineIndex}");
 
                 Operator topLevelOperator = ConstructGrammar(symbols, rule, terminalValues);
 
@@ -138,13 +140,11 @@ namespace EBNFParser
                     i = end;
                 }
                 else if (op.Symbol == Symbol.Concatenation)
-                {
                     operatorSequence.Add(new Concatenation());
-                }
                 else if (op.Symbol == Symbol.Alternation)
-                {
                     operatorSequence.Add(new Alternation());
-                }
+                else if(op.Symbol == Symbol.Exception)
+                    operatorSequence.Add(new EBNFOperators.Exception());
             }
 
             if (operatorSequence.Count == 1)
@@ -165,8 +165,16 @@ namespace EBNFParser
             if (operatorSequence.First() is BinaryOperator || operatorSequence.Last() is BinaryOperator)
                 throw new EBNFException("Rule cannot start or end with binary operator");
 
+            (List<Operator> sequence, int start, int length) sequence = GetFirstConsecutiveSequenceOfOperators(operatorSequence, typeof(EBNFOperators.Exception));
+            while (sequence.start > -1)
+            {
+                Operator tree = GenerateBinaryTreeFromSequence(sequence.sequence);
+                operatorSequence.RemoveRange(sequence.start, sequence.length);
+                operatorSequence.Insert(sequence.start, tree);
+                sequence = GetFirstConsecutiveSequenceOfOperators(operatorSequence, typeof(EBNFOperators.Exception));
+            }
 
-            (List<Operator> sequence, int start, int length) sequence = GetFirstConsecutiveSequenceOfOperators(operatorSequence, typeof(Concatenation));
+            sequence = GetFirstConsecutiveSequenceOfOperators(operatorSequence, typeof(Concatenation));
             while (sequence.start > -1)
             {
                 Operator tree = GenerateBinaryTreeFromSequence(sequence.sequence);

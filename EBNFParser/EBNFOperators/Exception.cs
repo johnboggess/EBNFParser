@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 
 namespace EBNFParser.EBNFOperators
 {
-    public class Exception : UnaryOperator
+    public class Exception : BinaryOperator
     {
         public Exception() { }
-        public Exception(Operator inner) :base(inner) { }
+        public Exception(Operator left, Operator right) : base(left, right) { }
     }
 }

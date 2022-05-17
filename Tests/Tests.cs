@@ -19,8 +19,9 @@ namespace Tests
         {
             string letters = "letter = 'A' | 'B' | 'C' | 'D';";
             string number = "number = { ['0' | '1'] } , '.' , { ['0' | '1'] };";
-            List<Rule> rules = Grammar.Build(letters+number);
-            Assert.True(rules.Count == 2);
+            string exception = "exception = {'1', '2', '3'} - '3' , '4';";
+            List<Rule> rules = Grammar.Build(letters+number+exception);
+            Assert.True(rules.Count == 3);
             Assert.True(rules[0].Name == "letter");
             Assert.True(rules[1].Name == "number");
 
@@ -43,6 +44,12 @@ namespace Tests
             Assert.True(((Concatenation)rules[1].Operator).Right<Concatenation>().Right<Repetition>().Inner<Optional>().Inner<Alternation>().Left<Terminal>().Value == "0");
             Assert.True(((Concatenation)rules[1].Operator).Right<Concatenation>().Right<Repetition>().Inner<Optional>().Inner<Alternation>().Right<Terminal>().Value == "1");
 
+
+            Assert.True(((Concatenation)rules[2].Operator).Left<Exception>().Left<Repetition>().Inner<Concatenation>().Left<Terminal>().Value == "1");
+            Assert.True(((Concatenation)rules[2].Operator).Left<Exception>().Left<Repetition>().Inner<Concatenation>().Right<Concatenation>().Left<Terminal>().Value == "2");
+            Assert.True(((Concatenation)rules[2].Operator).Left<Exception>().Left<Repetition>().Inner<Concatenation>().Right<Concatenation>().Right<Terminal>().Value == "3");
+            Assert.True(((Concatenation)rules[2].Operator).Left<Exception>().Right<Terminal>().Value == "3");
+            Assert.True(((Concatenation)rules[2].Operator).Right<Terminal>().Value == "4");
 
             try
             {
@@ -219,6 +226,65 @@ namespace Tests
                     Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == ".");
                     Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Terminal>().Value == ",");
                     Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Terminal>().Value == ";");
+                }
+                else if(rule.Name == "character")
+                {
+                    Assert.True(((Alternation)rule.Operator).Left<RuleReference>().ReferencedRule.Name == "letter");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Left<RuleReference>().ReferencedRule.Name == "digit");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Left<RuleReference>().ReferencedRule.Name == "symbol");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Terminal>().Value == "_");
+                }
+                else if(rule.Name == "identifier")
+                {
+                    Assert.True(((Concatenation)rule.Operator).Left<RuleReference>().ReferencedRule.Name == "letter");
+                    Assert.True(((Concatenation)rule.Operator).Right<Repetition>().Inner<Alternation>().Left<RuleReference>().ReferencedRule.Name == "letter");
+                    Assert.True(((Concatenation)rule.Operator).Right<Repetition>().Inner<Alternation>().Right<Alternation>().Left<RuleReference>().ReferencedRule.Name == "digit");
+                    Assert.True(((Concatenation)rule.Operator).Right<Repetition>().Inner<Alternation>().Right<Alternation>().Right<Terminal>().Value == "_");
+                }
+                else if(rule.Name == "lhs")
+                {
+                    Assert.True(((RuleReference)rule.Operator).ReferencedRule.Name == "identifier");
+                }
+                else if(rule.Name == "rhs")
+                {
+                    Assert.True(((Alternation)rule.Operator).Left<RuleReference>().ReferencedRule.Name == "identifier");
+                    Assert.True(((Alternation)rule.Operator).Right<Alternation>().Left<RuleReference>().ReferencedRule.Name == "terminal");
+
+                    Concatenation concate = ((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Left<Concatenation>();
+                    Assert.True(concate.Left<Terminal>().Value == "[");
+                    Assert.True(concate.Right<Concatenation>().Left<RuleReference>().ReferencedRule.Name == "rhs");
+                    Assert.True(concate.Right<Concatenation>().Right<Terminal>().Value == "]");
+                    
+                    concate = ((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Concatenation>();
+                    Assert.True(concate.Left<Terminal>().Value == "{");
+                    Assert.True(concate.Right<Concatenation>().Left<RuleReference>().ReferencedRule.Name == "rhs");
+                    Assert.True(concate.Right<Concatenation>().Right<Terminal>().Value == "}");
+
+                    concate = ((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Concatenation>();
+                    Assert.True(concate.Left<Terminal>().Value == "(");
+                    Assert.True(concate.Right<Concatenation>().Left<RuleReference>().ReferencedRule.Name == "rhs");
+                    Assert.True(concate.Right<Concatenation>().Right<Terminal>().Value == ")");
+
+                    concate = ((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Left<Concatenation>();
+                    Assert.True(concate.Left<RuleReference>().ReferencedRule.Name == "rhs");
+                    Assert.True(concate.Right<Concatenation>().Left<Terminal>().Value == "|");
+                    Assert.True(concate.Right<Concatenation>().Right<RuleReference>().ReferencedRule.Name == "rhs");
+
+                    concate = ((Alternation)rule.Operator).Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Alternation>().Right<Concatenation>();
+                    Assert.True(concate.Left<RuleReference>().ReferencedRule.Name == "rhs");
+                    Assert.True(concate.Right<Concatenation>().Left<Terminal>().Value == ",");
+                    Assert.True(concate.Right<Concatenation>().Right<RuleReference>().ReferencedRule.Name == "rhs");
+                }
+                else if(rule.Name == "rule")
+                {
+                    Assert.True(((Concatenation)rule.Operator).Left<RuleReference>().ReferencedRule.Name == "lhs");
+                    Assert.True(((Concatenation)rule.Operator).Right<Concatenation>().Left<Terminal>().Value == "=");
+                    Assert.True(((Concatenation)rule.Operator).Right<Concatenation>().Right<Concatenation>().Left<RuleReference>().ReferencedRule.Name == "rhs");
+                    Assert.True(((Concatenation)rule.Operator).Right<Concatenation>().Right<Concatenation>().Right<Terminal>().Value == ";");
+                }
+                else if(rule.Name == "grammar")
+                {
+                    Assert.True(((Repetition)rule.Operator).Inner<RuleReference>().ReferencedRule.Name == "rule");
                 }
             }
         }
