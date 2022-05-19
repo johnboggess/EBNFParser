@@ -29,7 +29,7 @@ namespace EBNFParser
             for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
             {
                 string line = lines[lineIndex];
-                if (line == "")
+                if (line.All(x=>char.IsWhiteSpace(x)))
                     continue;
                 string[] split = line.Split("=");
                 if (split.Length == 1)

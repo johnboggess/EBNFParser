@@ -1,4 +1,5 @@
-﻿using System;
+﻿using EBNFParser.Exceptions;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -35,6 +36,18 @@ namespace EBNFParser.EBNFOperators
         public T Inner<T>() where T : Operator
         {
             return (T)Operator;
+        }
+
+        protected internal override bool Match(string str, int index, out int newIndex, out FailedMatch failedMatch)
+        {
+            bool success = ReferencedRule.Operator.Match(str, index, out newIndex, out FailedMatch failed);
+
+            if (!success)
+                failedMatch = new FailedRuleReferenceMatch(this, failed, ReferencedRule);
+            else
+                failedMatch = null;
+
+            return success;
         }
 
     }

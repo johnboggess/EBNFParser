@@ -7,7 +7,7 @@ using System.IO;
 
 namespace Tests
 {
-    public class Tests
+    public class GrammarBuildTest
     {
         [SetUp]
         public void Setup()
@@ -177,7 +177,9 @@ namespace Tests
         {
             string grammar = File.ReadAllText("EBNFGrammar.txt");
             List<Rule> rules = Grammar.Build(grammar);
-
+            string s = "";
+            foreach (Rule rule in rules)
+                s += $"{rule.Name} = {rule.Operator.ToString()};\n";
             foreach(Rule rule in rules)
             {
                 if(rule.Name == "letter")

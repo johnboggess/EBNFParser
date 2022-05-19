@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace EBNFParser.EBNFOperators
 {
-    public class UnaryOperator : Operator
+    public abstract class UnaryOperator : Operator
     {
         public Operator InnerOperator { get { return _operators[0]; } set { _operators[0] = value; } }
 
